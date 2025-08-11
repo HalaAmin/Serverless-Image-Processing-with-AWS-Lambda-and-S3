@@ -1,0 +1,18 @@
+{
+  "Records": [
+    {
+      "eventVersion": "2.0",
+      "eventSource": "aws:s3",
+      "awsRegion": "eu-west-2",
+      "eventName": "ObjectCreated:Put",
+      "s3": {
+        "bucket": {
+          "name": "src-bucket-image-in"
+        },
+        "object": {
+          "key": "cake.jpg"
+        }
+      }
+    }
+  ]
+}
