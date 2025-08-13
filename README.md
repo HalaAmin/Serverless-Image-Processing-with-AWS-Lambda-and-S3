@@ -4,7 +4,7 @@
 This project automates image resizing using AWS Lambda. When an image is uploaded to a source S3 bucket, Lambda triggers, processes the image (resizes to 50%), and saves the result to a destination bucket.  
 
 ## **Project Deployment**
-For project deployment [deploy.mkv](deploy.mkv)
+For project deployment [deploy.mkv](https://drive.google.com/drive/folders/13yBcBNzPIiinOPi0GQ3oJkS33JOzvy2T?usp=drive_link)
 ---
 
 ## **Architecture**  
