@@ -1,101 +1,118 @@
 # AWS Lambda Image Processing Documentation  
 
 ## **Project Overview**  
-This project automates image resizing using AWS Lambda. When an image is uploaded to a source S3 bucket, Lambda triggers, processes the image (resizes to 50%), and saves the result to a destination bucket.  
+This project implements a serverless image processing system using AWS services. It provides two methods for image processing:
+1. **API Gateway**: Upload images via REST API which are processed and stored
+2. **S3 Direct Upload**: Images uploaded directly to S3 bucket trigger automatic processing
+
+When an image is processed, it's resized (50% of original size) and stored in a destination bucket, with comprehensive metadata stored in DynamoDB.
 
 ## **Project Deployment**
-For project deployment [deploy.mkv](https://drive.google.com/drive/folders/13yBcBNzPIiinOPi0GQ3oJkS33JOzvy2T?usp=drive_link)
+For project deployment watch [the deployment videos](https://drive.google.com/drive/folders/13yBcBNzPIiinOPi0GQ3oJkS33JOzvy2T?usp=drive_link)
+
 ---
 
 ## **Architecture**  
-![Lambda Image Processing Diagram](snaps/Lambda_Image_Processing.png)  
-1. **Source Bucket**: `src-bucket-image-in` (stores original images).  
-2. **Lambda Function**: Resizes images using Python/Pillow.  
-3. **Destination Bucket**: `dest-bucket-image-out` (stores resized images).  
+![Lambda Image Processing Diagram](snaps/Lambda_Image_Processing.jpeg)  
+
+## **Data Flow:**
+1. **API Path**: Client → API Gateway → Src S3 → Lambda → (Dest S3 + DynamoDB)
+2. **Direct Upload Path**: S3 Upload → Lambda → (Dest S3 + DynamoDB)
 
 ---
 
-### **Key Components**  
+## **Key Components**  
 
-### **1. S3 Buckets**  
-- **Source Bucket**: `src-bucket-image-in`  
-  - Example objects: `cake.jpg`
-  ![Source Bucket](snaps/src-s3.jpg)  
+### **1. API Gateway**  
+- **API Name**: `Quaen-Hala-API`  
+- **Endpoint**: `https://gns67mjs81.execute-api.eu-west-2.amazonaws.com/hala/`  
+- **Method**: PUT `/{bucket}/{filename}`  
+- **Role**: api-gw-s3-role (with permissions to write to S3 and CloudWatch)  
+![API Gateway](snaps/api-gw.jpg)  
+![API Gateway Resources](snaps/api-gw-res.jpg)
+![API Gateway Stage](snaps/api-gw-stage.jpg)
 
-- **Destination Bucket**: `dest-bucket-image-out`  
-  - Example objects: `resized-cake.jpg`  
+---
+
+### **2. S3 Buckets**  
+- **Source Bucket**: `src-bucket-image-in` (stores original images)  
+  - Example objects: `cake.jpg` , `lambda-fun-test.jpg`  
+  ![Source Bucket](snaps/src-s3-2.jpg)  
+
+- **Destination Bucket**: `dest-bucket-image-out` (stores resized images)  
+  - Example objects: `resized-cake.jpg`, `resized-lambda-fun-test.jpg`  
   ![Destination Bucket](snaps/dest-s3.jpg)  
 
-### **2. Lambda Function**  
-- **Code** ([lambda_function.py](aws-serverless-image-processor/lambda_function.py)):  
-  ```python
-  import boto3
-  from PIL import Image
+---
 
-  def resize_image(image_path, resized_path):
-      with Image.open(image_path) as image:
-          image.thumbnail(tuple(x / 2 for x in image.size))  # Resize to 50%
-          image.save(resized_path)
+### **3. Lambda Function**  
+- **Function Name**: Landa-image-s3-function  
+- **Runtime**: Python 3.12  
+- **Trigger**: S3 `ObjectCreated:Put` events   
+- **Permissions**: IAM role `lambda-image-role` with policy `lambda-image-policy`  
 
-  def lambda_handler(event, context):
-      s3_client = boto3.client('s3')
-      for record in event['Records']:
-          bucket = record['s3']['bucket']['name']
-          key = record['s3']['object']['key']
-          download_path = f'/tmp/{key}'
-          upload_path = f'/tmp/resized-{key}'
-          # Download → Resize → Upload
-          s3_client.download_file(bucket, key, download_path)
-          resize_image(download_path, upload_path)
-          s3_client.upload_file(upload_path, 'dest-bucket-image-out', f'resized-{key}')
-  ```
+**python Code** ([lambda_function.py](aws-serverless-image-processor/lambda_function.py))   
 
-- **Trigger**: S3 `ObjectCreated:Put` events in `src-bucket-image-in`.  
-- **Permissions**: IAM role `Lambda-image-role` with policy `Lambda-image-policy`.  
+---
 
-### **3. IAM Policy & Role**  
+### **4. DynamoDB Table**  
+- **Table Name**: hala-db  
+- **Partition Key**: resource-id (String)  
+- **Stores**: Comprehensive image processing metadata including:
+  - Original and resized image dimensions
+  - File sizes and format information
+  - Processing timestamps
+  - Size reduction percentages
+  - S3 event context information  
+![DynamoDB Table](snaps/dynamodb-table.jpg)  
+![DynamoDB Items](snaps/db-items.jpg)  
 
-- **Policy**: `Lambda-image-policy`  
-  ```json
-    {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Effect": "Allow",
-                "Action": [
-                    "logs:PutLogEvents",
-                    "logs:CreateLogGroup",
-                    "logs:CreateLogStream"
-                ],
-                "Resource": "arn:aws:logs:*:*:*"
-            },
-            {
-                "Effect": "Allow",
-                "Action": [
-                    "s3:GetObject"
-                ],
-                "Resource": "arn:aws:s3:::*/*"
-            },
-            {
-                "Effect": "Allow",
-                "Action": [
-                    "s3:PutObject"
-                ],
-                "Resource": "arn:aws:s3:::*/*"
-            }
-        ]
-    }
-  ```
-  ![IAM Policy](snaps/policy_s3.jpg)
-  ![IAM Policy 2](snaps/policy_s3_2.jpg)  
+---
 
-  - **Role**: `Lambda-image-role`  
-    - Grants Lambda access to S3 and CloudWatch Logs.  
-        ![IAM Role](snaps/role_s3.jpg)  
+### **5. IAM Roles & Policies**  
 
+- **API Gateway Role**: `api-gw-s3-role`  
+  - Policies: `AmazonAPIGatewayPushToCloudWatchLogs`, `lambda-image-policy`  
+  ![API Gateway Role](snaps/api-gw-s3-role.jpg)  
 
-### **4. Test Event**  
-Simulate an upload event using [test.json](aws-serverless-image-processor/test.json):  
+- **Lambda Execution Role**: `lambda-image-role`  
+  - Policy: `lambda-image-policy` (grants S3, CloudWatch Logs, and DynamoDB access)  
+
+  ![IAM lambda-image-role](snaps/role_s3.jpg) 
+  
+  **lambda-image-policy** ([lambda-image-policy.json](aws-serverless-image-processor/lambda-image-policy.json))  
+ 
+---
+
+## **Workflow**  
+
+### **Option 1: API Upload**
+1. Client PUT request to API Gateway:  
+   `PUT https://gns67mjs81.execute-api.eu-west-2.amazonaws.com/hala/src-bucket-image-in/src.jpg`
+2. API Gateway stores image in source S3 bucket
+3. source S3 bucket triggers Lambda function
+4. Lambda function processes image and stores comprehensive metadata in DynamoDB
+
+### **Option 2: Direct S3 Upload**
+1. User uploads image directly to `src-bucket-image-in`
+2. source S3 bucket triggers Lambda function automatically
+3. Lambda function processes image and stores comprehensive metadata in DynamoDB
+
+### **Processing Steps:**
+1. Image downloaded to Lambda /tmp directory with unique filename
+2. Extract metadata from original image (dimensions, format, size)
+3. Resized to 50% of original size using Pillow
+4. Extract metadata from resized image
+5. Resized image uploaded to `dest-bucket-image-out` with custom metadata
+6. Comprehensive processing metadata stored in DynamoDB table `hala-db`
+7. Temporary files cleaned up
+8. Success response returned
+
+---
+
+## **Testing**  
+
+### **1. Lambda Test Event:**
 ```json
 {
   "Records": [
@@ -119,31 +136,44 @@ Simulate an upload event using [test.json](aws-serverless-image-processor/test.j
 
 ---
 
-## **Workflow**  
-1. User uploads `cake.jpg` to `src-bucket-image-in`.  
-2. S3 triggers the Lambda function.  
-3. Lambda:  
-   - Downloads `cake.jpg` to `/tmp/`.  
-   - Resizes the image to 50% original size.  
-   - Uploads `resized-cake.jpg` to `dest-bucket-image-out`.  
-4. Resized image is available in the destination bucket.  
+### **2. API Testing with Postman:**
+![Postman Test](snaps/postman-api-client.jpg)  
+- **Method**: PUT  
+- **URL**: `https://gns67mjs81.execute-api.eu-west-2.amazonaws.com/hala/src-bucket-image-in/src.jpg`  
+- **Body**: Image file as binary data
+
+---
+
+## **Monitoring & Logging**  
+- **CloudWatch Logs**: Lambda execution logs and API Gateway access logs  
+- **DynamoDB**: Comprehensive processing metadata 
+- **S3 Metrics**: Storage and access metrics for both buckets  
+
+![CloudWatch](snaps/cloudwatch.jpg)  
+![DynamoDB Table](snaps/dynamodb-table.jpg)
+![DynamoDB Items](snaps/db-items.jpg)
 
 ---
 
 ## **Troubleshooting**  
-- **Permissions Errors**: Verify `Lambda-image-role` has the policy attached.  
-- **Image Processing Failures**:  
-  - Ensure Pillow library is included in the Lambda deployment package.  
-  - Check CloudWatch Logs for Python runtime errors.  
-- **Trigger Not Firing**:  
-  - Confirm S3 event notification is configured for `Put` events.  
+- **API Gateway Errors**: Check API Gateway logs and IAM permissions for `api-gw-s3-role`
+- **Lambda Execution Errors**: Check CloudWatch Logs for function errors
+- **S3 Permission Errors**: Verify bucket policies and Lambda execution role permissions
+- **DynamoDB Errors**: Check table permissions and configuration
+
+### **Common Issues:**
+1. **Library Dependencies**: Ensure Pillow is included in Lambda deployment package
+2. **Temporary Storage**: Lambda /tmp directory has limited space (512MB)
+3. **Timeout Settings**: Adjust Lambda timeout for large image processing (up to 1 minute)
+4. **Memory Settings**: Increase Lambda memory for large image processing
 
 ---
 
 #### **Dependencies**  
-- **Python 3.9+**  
+- **Python 3.12**  
 - **Libraries**:  
   - `boto3` (AWS SDK)  
   - `Pillow` (image processing)  
+  - `urllib3` (URL processing)  
 
 ---
